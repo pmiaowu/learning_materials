@@ -1,0 +1,139 @@
+###############  1、main(全局设置)  #################
+#主模块指令，指定nginx worker进程运行用户及用户组，默认为nobody账号，可以不设置
+user  nobody;
+
+#配置Nginx的工作进程数，每个nginx平均耗内存10~12MB，一般指定一个进程就够了，或是说指定为cpu总核数或总核数的两倍都可以；
+worker_processes  1;
+ 
+#error_log 主模块指令，定义全局错误日志文件。输出级别有 debug,info,notice,warn,error,crit可供选择，其中 debug 输出日志最详细，crit输出日志最少。
+#error_log  logs/error.log;
+#error_log  logs/error.log  notice;
+error_log  logs/error.log  info;
+
+#进程pid存放位置
+pid        logs/nginx.pid;
+
+#最大文件打开数（连接），可在linux中执行命令ulimit -HSn 返回的结果为系统优化后的那么你跟着填写即可
+#这个指令是指当一个nginx进程打开的最多文件描述符数目
+#理论值应该是最多打开文件数（ulimit -n）与nginx进程数（worker_processes）相除，但是nginx分配请求并不是那么均匀，所以最好与ulimit -n 的值保持一致。
+#这是因为nginx调度时分配请求到进程并不是那么的均衡，所以假如你填写10240，总并发量达到3-4万时就有进程可能超过10240了，这时会返回502错误。
+worker_rlimit_nofile 51200;
+
+
+###############  2、events块(nginx工作模式)  #################
+#event指令用来设置nginx的工作模式及连接数上限。
+events {
+    #worker_connections ，用于定义进程的最大连接数，默认为1024。
+    #最大客户连接数由worker_connections和worker_processes决定，即max_client = worker_processes*worker_connections,
+    #在作为反向代理时变为：max_client = worker_processes*worker_connections/4。(ps：这个为什么这么算，我也不是很懂~网上也没找到很合适的说法)
+
+    #注意1：
+        #设置 worker_rlimit_nofile 后，你修改 worker_connections 值时，是不能超过worker_rlimit_nofile的这个值，不然你会收到一个warn提示。
+        #也就是 worker_processes*worker_connections > worker_rlimit_nofile 时你会收到一个warn提示。
+
+    #注意2：
+        #进程的最大连接数受Linux系统进程的最大打开文件数限制，在执行操作系统命令“ ulimit –n (worker_connections的值) ”后worker_connections的设置才生效。
+        #例如：ulimit –n 1024
+    worker_connections  1024;
+}
+
+
+##################  3、http块(http设置)  ###############
+http {
+    #文件扩展名与类型映射表
+    include       mime.types;
+
+    #默认文件类型
+    default_type  application/octet-stream;
+
+    #隐藏响应header和错误通知中的nginx版本号,没事的话，请设置隐藏 nginx版本号
+    server_tokens off;
+
+    #设置日志模式
+    #$remote_addr 与 $http_x_forwarded_for 用以记录客户端的ip地址；
+    #$remote_user：用来记录客户端用户名称；
+    #$time_local： 用来记录访问时间与时区；
+    #$request： 用来记录请求的url与http协议；
+    #$status： 用来记录请求状态；成功是200，
+    #$body_bytes_sent ：记录发送给客户端文件主体内容大小；
+    #$http_referer：用来记录从那个页面链接访问过来的；
+    #$http_user_agent：记录客户浏览器的相关信息；
+    #通常web服务器放在反向代理的后面，这样就不能获取到客户的IP地址了，通过$remote_add拿到的IP地址是反向代理服务器的iP地址。
+    #反向代理服务器在转发请求的http头信息中，可以增加x_forwarded_for信息，用以记录原有客户端的IP地址和原来客户端的请求的服务器地址。
+    log_format  main  '$remote_addr - $remote_user [$time_local] "$request" '
+                      '$status $body_bytes_sent "$http_referer" '
+                      '"$http_user_agent" "$http_x_forwarded_for"';
+
+    #用了 log_format 指令设置了日志格式之后，需要用 access_log 指令指定日志文件的存放路径；
+    access_log  logs/access.log  main;
+
+    #开启高效传输模式 
+    sendfile        on;
+
+    #激活 tcp_nopush 参数可以允许把 httpresponse header 和文件的开始放在一个文件里发布，
+    #作用是减少网络报文段的数量
+    #tcp_nopush     on;
+    
+    #连接超时时间，单位是秒
+    keepalive_timeout  65;
+    
+    #开启gzip压缩功能
+    gzip  on;
+
+    #设置允许压缩的页面最小字节数，页面字节数从header头的Content-Length中获取。默认值是0，表示不管页面多大都进行压缩。建议设置成大于1K。如果小于1K可能会越压越大。
+    gzip_min_length  1k;
+
+##############  4、server 虚拟主机配置 (基本例子)################
+    server {
+        # 监听的端口
+        listen       80;
+
+        #指定IP地址或者域名，多个域名之间用空格隔开。
+        server_name  localhost test.com;
+
+        #access_log用于指定此虚拟主机的访问日志存放路径，main用于指定访问日志的输出格式。
+        access_log  logs/host.access.log  main;
+
+        # URL匹配
+        location / {
+            #设定访问的默认首页地址
+            index  index.html index.htm;
+
+            #指定虚拟主机的网页根目录，这个目录可以是相对路径，也可以是绝对路径
+            root   html;
+        }
+
+############  5、虚拟主机错误信息返回页面  #################
+        #error_page 指令可以定制各种错误信息返回页面，nginx会在主目录的html目录中查找指定的返回页面
+        error_page  404              /404.html;
+
+        # redirect server error pages to the static page /50x.html
+        # 这里的意思就是 500 502 503 504 这几个错都会显示 50x.html 这个错误页面
+        error_page   500 502 503 504  /50x.html;
+        location = /50x.html {
+            root   html;
+        }
+    }
+
+############  6、HTTPS 的基本配置  #################
+    # HTTPS server
+    #
+    #server {
+    #    listen       443 ssl;
+    #    server_name  localhost;
+
+    #    ssl_certificate      cert.pem;
+    #    ssl_certificate_key  cert.key;
+
+    #    ssl_session_cache    shared:SSL:1m;
+    #    ssl_session_timeout  5m;
+
+    #    ssl_ciphers  HIGH:!aNULL:!MD5;
+    #    ssl_prefer_server_ciphers  on;
+
+    #    location / {
+    #        root   html;
+    #        index  index.html index.htm;
+    #    }
+    #}
+}
