@@ -4,4 +4,5 @@
 *  nginx入门到放弃之nginx基础配置使用与讲解
 *  nginx入门到放弃之nginx虚拟主机多站点配置
 *  nginx入门到放弃之nginx设置访问目录列表
+*  nginx入门到放弃之nginx访问权限控制
 
