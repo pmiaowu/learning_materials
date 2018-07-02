@@ -6,4 +6,4 @@
 *  nginx入门到放弃之nginx设置访问目录列表
 *  nginx入门到放弃之nginx访问权限控制
 *  nginx入门到放弃之nginx的location匹配规则
-
+*  nginx入门到放弃之nginx日志文件相关操作
